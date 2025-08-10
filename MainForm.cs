@@ -14,16 +14,21 @@ using Windows.UI.Xaml.Controls;
 using OpenQA.Selenium;
 using Keys = OpenQA.Selenium.Keys;
 using System.Threading.Tasks;
+using ExcelDataReader.Log;
 
 namespace WhatsAppAutomator
 {
     public partial class MainForm : Form
     {
         List<string> numbers = new List<string>();
+        private string selectedImagePath = null;
 
         public MainForm()
         {
             InitializeComponent();
+
+            // Set default radio button selection
+            prepend_image.Checked = true;
         }
 
         private void label1_Click(object sender, EventArgs e)
@@ -86,7 +91,7 @@ namespace WhatsAppAutomator
             }
 
 
-            if (this.numbers.Count < 1 && false)
+            if (this.numbers.Count < 1)
             {
                 Log("Please load some valid numbers.");
                 btnStart.Enabled = true;
@@ -174,6 +179,12 @@ namespace WhatsAppAutomator
                             inputbar.Click();
                             await Task.Delay(300);
 
+                            // Check if we need to attach an image and whether to prepend it
+                            if (!string.IsNullOrEmpty(selectedImagePath) && prepend_image.Checked)
+                            {
+                                await AttachImage(driver, wait, selectedImagePath);
+                            }
+
                             // Normalize line endings first
                             string normalizedMessage = MessageBox.Text.Replace("\r\n", "\n").Replace("\r", "\n");
 
@@ -200,6 +211,16 @@ namespace WhatsAppAutomator
 
                                 inputbar.SendKeys(Keys.Enter);
                                 await Task.Delay(300);
+
+                                // Check if we need to attach an image and whether to append it
+                                if (!string.IsNullOrEmpty(selectedImagePath) && radioButton1.Checked)
+                                {
+                                    await AttachImage(driver, wait, selectedImagePath);
+
+                                    // Send the image
+                                    inputbar.SendKeys(Keys.Enter);
+                                    await Task.Delay(300);
+                                }
                             }
                         }
                         catch (Exception ex)
@@ -391,6 +412,85 @@ namespace WhatsAppAutomator
         }
 
         private void textBox1_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private async Task AttachImage(WindowsDriver<WindowsElement> driver, WebDriverWait wait, string imagePath)
+        {
+            try
+            {
+                Log("Attaching image...");
+
+                // Click the attach button
+                var attachButton = wait.Until(d =>
+                    driver.FindElementByAccessibilityId("AttachButton")
+                );
+                attachButton.Click();
+                await Task.Delay(500);
+
+                // Click Photos & Video button
+                var photosVideoButton = wait.Until(d =>
+                    driver.FindElementByName("Photos & videos")
+                );
+                photosVideoButton.Click();
+                await Task.Delay(1000); // Give time for file dialog to open
+
+                // Find the filename textbox and enter the path
+                var filenameTextbox = wait.Until(d =>
+                    driver.FindElementByAccessibilityId("1148")
+                );
+                filenameTextbox.Click();
+                filenameTextbox.SendKeys(imagePath);
+                await Task.Delay(300);
+
+                // Click the Open button
+                var openButton = wait.Until(d =>
+                    driver.FindElementByAccessibilityId("1")
+                );
+                openButton.Click();
+                await Task.Delay(1000); // Wait for image to load
+
+                // Click the Open button
+                var uploadImage = wait.Until(d =>
+                    driver.FindElementByAccessibilityId("SubmitButton")
+                );
+                uploadImage.Click();
+                await Task.Delay(1000); // Wait for image to load
+                Log($"Uploaded Image: {imagePath}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Error attaching image: {ex.Message}");
+                throw;
+            }
+        }
+
+        private void attach_image_Click(object sender, EventArgs e)
+        {
+            using (var ofd = new OpenFileDialog
+            {
+                Title = "Select an image file",
+                Filter = "Image files|*.jpg;*.jpeg;*.png;*.gif;*.bmp;*.tiff"
+            })
+            {
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    selectedImagePath = ofd.FileName;
+                    Log($"Image selected: {Path.GetFileName(selectedImagePath)}");
+
+                    // Update button text to show an image is selected
+                    attach_image.Text = $"Image: {Path.GetFileName(selectedImagePath)}";
+                }
+            }
+        }
+
+        private void prepend_image_CheckedChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void label1_Click_1(object sender, EventArgs e)
         {
 
         }
