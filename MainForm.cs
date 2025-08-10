@@ -86,7 +86,7 @@ namespace WhatsAppAutomator
             }
 
 
-            if (this.numbers.Count < 1)
+            if (this.numbers.Count < 1 && false)
             {
                 Log("Please load some valid numbers.");
                 btnStart.Enabled = true;
@@ -121,7 +121,7 @@ namespace WhatsAppAutomator
                     title.Click();
                     await Task.Delay(300);
 
-                    this.numbers = new List<string>() { "+923122978700", "+923330001963", "+923172006789" };
+                    this.numbers = new List<string>() { "+923330001963" };
 
                     foreach (var number in this.numbers)
                     {
@@ -174,12 +174,33 @@ namespace WhatsAppAutomator
                             inputbar.Click();
                             await Task.Delay(300);
 
-                            var processedMessage = MessageBox.Text.Replace(Environment.NewLine, Keys.Enter.ToString());
-                            inputbar.SendKeys(processedMessage);
-                            await Task.Delay(300);
+                            // Normalize line endings first
+                            string normalizedMessage = MessageBox.Text.Replace("\r\n", "\n").Replace("\r", "\n");
 
-                            inputbar.SendKeys(Keys.Enter);
-                            await Task.Delay(300);
+                            // Split by 2 or more consecutive newlines (this will separate into different messages)
+                            var messageParts = Regex.Split(normalizedMessage, @"\n{2,}");
+
+                            for (int i = 0; i < messageParts.Length; i++)
+                            {
+                                if (string.IsNullOrEmpty(messageParts[i])) continue; // Skip empty parts
+
+                                var lines = messageParts[i].Split('\n');
+
+                                for (int j = 0; j < lines.Length; j++)
+                                {
+                                    inputbar.SendKeys(lines[j]);
+
+                                    if (j < lines.Length - 1) // Not the last line in this message part
+                                    {
+                                        // Send Shift+Enter for line break within the same message
+                                        inputbar.SendKeys(Keys.Shift + Keys.Enter);
+                                        await Task.Delay(100);
+                                    }
+                                }
+
+                                inputbar.SendKeys(Keys.Enter);
+                                await Task.Delay(300);
+                            }
                         }
                         catch (Exception ex)
                         {
