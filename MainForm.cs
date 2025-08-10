@@ -121,7 +121,7 @@ namespace WhatsAppAutomator
                     title.Click();
                     await Task.Delay(300);
 
-                    this.numbers = new List<string>() { "+923330001963" };
+                    // this.numbers = new List<string>() { "" };
 
                     foreach (var number in this.numbers)
                     {
