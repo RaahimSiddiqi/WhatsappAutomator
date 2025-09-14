@@ -3,15 +3,20 @@ from PyQt6.QtWidgets import (
     QLineEdit, QTextEdit, QPushButton, QGroupBox,
     QTableWidget, QTableWidgetItem, QFileDialog,
     QMessageBox, QSpinBox, QProgressBar, QComboBox,
-    QHeaderView
+    QHeaderView, QDialog, QDialogButtonBox, QFormLayout,
+    QSplitter, QMenu
 )
-from PyQt6.QtCore import pyqtSlot, Qt
+from PyQt6.QtCore import pyqtSlot, Qt, QPoint
+from PyQt6.QtGui import QAction
 from pathlib import Path
 from typing import List
+import logging
 from models.contact import Contact
 from models.message import Message
 from services.whatsapp_service import BulkSendWorker
 from utils.file_handler import FileHandler
+
+logger = logging.getLogger(__name__)
 
 
 class BulkMessageTab(QWidget):
@@ -58,7 +63,10 @@ class BulkMessageTab(QWidget):
         self.contacts_table.setHorizontalHeaderLabels(["Name", "Phone", "Email", "Group"])
         self.contacts_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.contacts_table.setAlternatingRowColors(True)
-        self.contacts_table.setMaximumHeight(200)
+        self.contacts_table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.contacts_table.customContextMenuRequested.connect(self.show_contact_context_menu)
+        self.contacts_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        # Remove maximum height to allow more rows
         contacts_layout.addWidget(self.contacts_table)
 
         self.contacts_count_label = QLabel("Total contacts: 0")
@@ -102,31 +110,19 @@ class BulkMessageTab(QWidget):
         clear_attach_btn.clicked.connect(self.clear_attachments)
         attachments_layout.addWidget(clear_attach_btn)
 
+        settings_btn = QPushButton("Settings")
+        settings_btn.clicked.connect(self.show_settings_dialog)
+        attachments_layout.addWidget(settings_btn)
+
         attachments_layout.addStretch()
         message_layout.addLayout(attachments_layout)
 
         message_group.setLayout(message_layout)
         layout.addWidget(message_group)
 
-        settings_group = QGroupBox("Sending Settings")
-        settings_layout = QHBoxLayout()
-
-        settings_layout.addWidget(QLabel("Country Code:"))
-        self.country_code_input = QLineEdit()
-        self.country_code_input.setPlaceholderText("+1")
-        self.country_code_input.setMaximumWidth(60)
-        settings_layout.addWidget(self.country_code_input)
-
-        settings_layout.addWidget(QLabel("Delay (seconds):"))
-        self.delay_spinbox = QSpinBox()
-        self.delay_spinbox.setMinimum(1)
-        self.delay_spinbox.setMaximum(60)
-        self.delay_spinbox.setValue(5)
-        settings_layout.addWidget(self.delay_spinbox)
-
-        settings_layout.addStretch()
-        settings_group.setLayout(settings_layout)
-        layout.addWidget(settings_group)
+        # Initialize sending settings (hidden by default in dialog)
+        self.country_code = ""
+        self.delay_seconds = 5
 
         progress_group = QGroupBox("Progress")
         progress_layout = QVBoxLayout()
@@ -226,21 +222,44 @@ class BulkMessageTab(QWidget):
 
     def import_contacts(self, file_path: str):
         try:
+            logger.info(f"Importing contacts from {file_path}")
+
             if file_path.endswith('.csv'):
                 new_contacts = FileHandler.read_csv_contacts(file_path)
             else:
                 new_contacts = FileHandler.read_excel_contacts(file_path)
 
-            self.contacts.extend(new_contacts)
+            # Validate contacts before adding
+            valid_contacts = []
+            invalid_count = 0
+
+            for contact in new_contacts:
+                if not contact.phone:
+                    logger.warning(f"Contact validation failed: Missing phone number for {contact.name or 'unnamed contact'}")
+                    invalid_count += 1
+                    continue
+
+                if not FileHandler.validate_phone_number(contact.phone):
+                    logger.warning(f"Contact validation failed: Invalid phone number format for {contact.name}: {contact.phone}")
+                    invalid_count += 1
+                    continue
+
+                valid_contacts.append(contact)
+                logger.debug(f"Contact added: {contact.name} ({contact.phone})")
+
+            self.contacts.extend(valid_contacts)
             self.update_contacts_table()
 
-            QMessageBox.information(
-                self,
-                "Success",
-                f"Imported {len(new_contacts)} contacts successfully!"
-            )
+            success_msg = f"Imported {len(valid_contacts)} contacts successfully!"
+            if invalid_count > 0:
+                success_msg += f"\n{invalid_count} contacts skipped due to invalid data."
+
+            logger.info(f"Import complete: {len(valid_contacts)} valid, {invalid_count} invalid")
+
+            QMessageBox.information(self, "Import Complete", success_msg)
 
         except Exception as e:
+            logger.error(f"Failed to import contacts from {file_path}: {str(e)}")
             QMessageBox.critical(
                 self,
                 "Import Error",
@@ -249,8 +268,6 @@ class BulkMessageTab(QWidget):
 
     @pyqtSlot()
     def add_contact_manually(self):
-        from PyQt6.QtWidgets import QDialog, QFormLayout, QDialogButtonBox
-
         dialog = QDialog(self)
         dialog.setWindowTitle("Add Contact")
         dialog.setModal(True)
@@ -278,20 +295,171 @@ class BulkMessageTab(QWidget):
 
         if dialog.exec() == QDialog.DialogCode.Accepted:
             phone = phone_input.text().strip()
-            if phone:
-                contact = Contact(
-                    name=name_input.text().strip(),
-                    phone=phone,
-                    email=email_input.text().strip(),
-                    group=group_input.text().strip()
-                )
-                self.contacts.append(contact)
-                self.update_contacts_table()
+            name = name_input.text().strip()
+
+            if not phone:
+                logger.warning("Contact creation failed: No phone number provided")
+                QMessageBox.warning(self, "Invalid Contact", "Phone number is required")
+                return
+
+            if not FileHandler.validate_phone_number(phone):
+                logger.warning(f"Contact creation failed: Invalid phone number format: {phone}")
+                QMessageBox.warning(self, "Invalid Phone", "Invalid phone number format")
+                return
+
+            contact = Contact(
+                name=name,
+                phone=phone,
+                email=email_input.text().strip(),
+                group=group_input.text().strip()
+            )
+            self.contacts.append(contact)
+            self.update_contacts_table()
+            logger.info(f"Contact manually added: {name or 'Unnamed'} ({phone})")
 
     @pyqtSlot()
     def clear_contacts(self):
-        self.contacts.clear()
-        self.update_contacts_table()
+        if not self.contacts:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Clear Contacts",
+            f"Are you sure you want to clear all {len(self.contacts)} contacts?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            count = len(self.contacts)
+            self.contacts.clear()
+            self.update_contacts_table()
+            logger.info(f"Cleared all {count} contacts")
+
+    def show_contact_context_menu(self, position: QPoint):
+        if not self.contacts_table.selectedItems():
+            return
+
+        menu = QMenu(self)
+
+        # Get selected rows
+        selected_rows = set()
+        for item in self.contacts_table.selectedItems():
+            selected_rows.add(item.row())
+
+        # Delete action
+        delete_action = QAction("Delete Selected", self)
+        delete_action.triggered.connect(lambda: self.delete_selected_contacts(selected_rows))
+        menu.addAction(delete_action)
+
+        # Edit action
+        if len(selected_rows) == 1:
+            edit_action = QAction("Edit Contact", self)
+            edit_action.triggered.connect(lambda: self.edit_contact(list(selected_rows)[0]))
+            menu.addAction(edit_action)
+
+        # Copy phone number
+        copy_phone_action = QAction("Copy Phone Number(s)", self)
+        copy_phone_action.triggered.connect(lambda: self.copy_phone_numbers(selected_rows))
+        menu.addAction(copy_phone_action)
+
+        menu.exec(self.contacts_table.mapToGlobal(position))
+
+    def delete_selected_contacts(self, rows: set):
+        if not rows:
+            return
+
+        # Get contacts to delete
+        contacts_to_delete = []
+        for row in sorted(rows, reverse=True):
+            if row < len(self.contacts):
+                contacts_to_delete.append(self.contacts[row])
+
+        if len(contacts_to_delete) == 1:
+            msg = f"Delete contact {contacts_to_delete[0].name or contacts_to_delete[0].phone}?"
+        else:
+            msg = f"Delete {len(contacts_to_delete)} selected contacts?"
+
+        reply = QMessageBox.question(
+            self,
+            "Delete Contacts",
+            msg,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Remove contacts from list
+            for contact in contacts_to_delete:
+                self.contacts.remove(contact)
+                logger.info(f"Contact deleted: {contact.name or 'Unnamed'} ({contact.phone})")
+
+            self.update_contacts_table()
+            logger.info(f"Deleted {len(contacts_to_delete)} contacts")
+
+    def edit_contact(self, row: int):
+        if row >= len(self.contacts):
+            return
+
+        contact = self.contacts[row]
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit Contact")
+        dialog.setModal(True)
+
+        layout = QFormLayout()
+
+        name_input = QLineEdit(contact.name)
+        phone_input = QLineEdit(contact.phone)
+        email_input = QLineEdit(contact.email)
+        group_input = QLineEdit(contact.group)
+
+        layout.addRow("Name:", name_input)
+        layout.addRow("Phone:", phone_input)
+        layout.addRow("Email:", email_input)
+        layout.addRow("Group:", group_input)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        dialog.setLayout(layout)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            phone = phone_input.text().strip()
+
+            if not phone:
+                logger.warning("Contact edit failed: No phone number provided")
+                QMessageBox.warning(self, "Invalid Contact", "Phone number is required")
+                return
+
+            if not FileHandler.validate_phone_number(phone):
+                logger.warning(f"Contact edit failed: Invalid phone number format: {phone}")
+                QMessageBox.warning(self, "Invalid Phone", "Invalid phone number format")
+                return
+
+            old_info = f"{contact.name or 'Unnamed'} ({contact.phone})"
+
+            contact.name = name_input.text().strip()
+            contact.phone = phone
+            contact.email = email_input.text().strip()
+            contact.group = group_input.text().strip()
+
+            self.update_contacts_table()
+            logger.info(f"Contact edited: {old_info} -> {contact.name or 'Unnamed'} ({contact.phone})")
+
+    def copy_phone_numbers(self, rows: set):
+        from PyQt6.QtWidgets import QApplication
+
+        phones = []
+        for row in rows:
+            if row < len(self.contacts):
+                phones.append(self.contacts[row].phone)
+
+        if phones:
+            QApplication.clipboard().setText("\n".join(phones))
+            logger.debug(f"Copied {len(phones)} phone numbers to clipboard")
 
     @pyqtSlot()
     def export_contacts(self):
@@ -323,6 +491,37 @@ class BulkMessageTab(QWidget):
             self.contacts_table.setItem(i, 3, QTableWidgetItem(contact.group))
 
         self.contacts_count_label.setText(f"Total contacts: {len(self.contacts)}")
+
+    def show_settings_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Sending Settings")
+        dialog.setModal(True)
+
+        layout = QFormLayout()
+
+        country_code_input = QLineEdit(self.country_code)
+        country_code_input.setPlaceholderText("+1")
+        layout.addRow("Country Code:", country_code_input)
+
+        delay_spinbox = QSpinBox()
+        delay_spinbox.setMinimum(1)
+        delay_spinbox.setMaximum(60)
+        delay_spinbox.setValue(self.delay_seconds)
+        delay_spinbox.setSuffix(" seconds")
+        layout.addRow("Delay between messages:", delay_spinbox)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        dialog.setLayout(layout)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.country_code = country_code_input.text().strip()
+            self.delay_seconds = delay_spinbox.value()
 
     @pyqtSlot()
     def add_attachments(self):
@@ -367,8 +566,8 @@ class BulkMessageTab(QWidget):
             attachments=self.attachments.copy()
         )
 
-        country_code = self.country_code_input.text().strip()
-        delay = self.delay_spinbox.value()
+        country_code = self.country_code
+        delay = self.delay_seconds
 
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)

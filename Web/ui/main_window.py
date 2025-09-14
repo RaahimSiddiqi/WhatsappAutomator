@@ -32,7 +32,6 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 1200, 800)
 
         self.setup_menubar()
-        self.setup_toolbar()
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -119,30 +118,6 @@ class MainWindow(QMainWindow):
         documentation_action.triggered.connect(self.show_documentation)
         help_menu.addAction(documentation_action)
 
-    def setup_toolbar(self):
-        toolbar = QToolBar("Main Toolbar")
-        toolbar.setIconSize(QSize(24, 24))
-        self.addToolBar(toolbar)
-
-        login_action = QAction("Login", self)
-        login_action.triggered.connect(self.login_whatsapp)
-        toolbar.addAction(login_action)
-
-        toolbar.addSeparator()
-
-        send_single_action = QAction("Send Single", self)
-        send_single_action.triggered.connect(self.send_single_message)
-        toolbar.addAction(send_single_action)
-
-        send_bulk_action = QAction("Send Bulk", self)
-        send_bulk_action.triggered.connect(self.send_bulk_messages)
-        toolbar.addAction(send_bulk_action)
-
-        toolbar.addSeparator()
-
-        stop_action = QAction("Stop", self)
-        stop_action.triggered.connect(self.stop_sending)
-        toolbar.addAction(stop_action)
 
     def setup_statusbar(self):
         self.status_bar = QStatusBar()
@@ -284,8 +259,19 @@ class MainWindow(QMainWindow):
     def on_logged_in(self):
         self.connection_status.setText("Connected")
         self.connection_status.setStyleSheet("QLabel { color: green; font-weight: bold; padding: 0 10px; }")
-        self.status_label.setText("Successfully logged in to WhatsApp")
-        QMessageBox.information(self, "Success", "Successfully logged in to WhatsApp!")
+
+        # Check if this is from a restored session or new login
+        if "session restored" in self.status_label.text().lower():
+            # Already logged in from persistent session
+            QMessageBox.information(
+                self,
+                "Already Logged In",
+                "You're already logged in to WhatsApp Web from a previous session!"
+            )
+        else:
+            # Fresh login
+            self.status_label.setText("Successfully logged in to WhatsApp")
+            QMessageBox.information(self, "Success", "Successfully logged in to WhatsApp!")
 
     @pyqtSlot()
     def on_login_required(self):

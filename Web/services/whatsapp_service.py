@@ -17,9 +17,11 @@ from models.contact import Contact
 from config import (
     WHATSAPP_WEB_URL,
     MESSAGE_INPUT_XPATH,
+    MESSAGE_INPUT_XPATH_FALLBACK,
     SEND_BUTTON_XPATH,
+    MEDIA_SEND_BUTTON_XPATH,
     LOGIN_CHECK_XPATH,
-    ATTACHMENT_BUTTON_XPATH,
+    MEDIA_CAPTION_INPUT_XPATH,
     DEFAULT_TIMEOUT
 )
 
@@ -74,6 +76,11 @@ class WhatsAppService(QObject):
             return False
 
     def login(self) -> bool:
+        # Check if already logged in
+        if self.is_logged_in:
+            self.status_update.emit("Already logged in to WhatsApp Web")
+            return True
+
         if not self.driver:
             if not self.initialize_driver():
                 return False
@@ -82,26 +89,43 @@ class WhatsAppService(QObject):
             self.status_update.emit("Opening WhatsApp Web...")
             self.driver.get(WHATSAPP_WEB_URL)
 
-            wait = WebDriverWait(self.driver, DEFAULT_TIMEOUT)
+            # Short wait to check if already logged in (from persistent session)
+            short_wait = WebDriverWait(self.driver, 10)
 
             try:
-                wait.until(EC.presence_of_element_located((By.XPATH, LOGIN_CHECK_XPATH)))
+                # First, quickly check if we're already logged in
+                short_wait.until(EC.presence_of_element_located((By.XPATH, LOGIN_CHECK_XPATH)))
+
+                # We're already logged in from a previous session!
                 self.is_logged_in = True
                 self.logged_in.emit()
-                self.status_update.emit("Successfully logged in to WhatsApp Web")
+                self.status_update.emit("Already logged in to WhatsApp Web (session restored)")
+                logger.info("User already logged in from persistent session")
                 return True
 
             except TimeoutException:
+                # Not logged in, need to scan QR code
                 self.login_required.emit()
                 self.status_update.emit("Please scan the QR code to login...")
+                logger.info("QR code scan required for login")
 
+                # Wait longer for QR code scan (up to 5 minutes)
                 wait_long = WebDriverWait(self.driver, 300)
-                wait_long.until(EC.presence_of_element_located((By.XPATH, LOGIN_CHECK_XPATH)))
 
-                self.is_logged_in = True
-                self.logged_in.emit()
-                self.status_update.emit("Successfully logged in to WhatsApp Web")
-                return True
+                try:
+                    wait_long.until(EC.presence_of_element_located((By.XPATH, LOGIN_CHECK_XPATH)))
+
+                    self.is_logged_in = True
+                    self.logged_in.emit()
+                    self.status_update.emit("Successfully logged in to WhatsApp Web")
+                    logger.info("Successfully logged in after QR code scan")
+                    return True
+
+                except TimeoutException:
+                    error_msg = "Login timeout - QR code was not scanned within 5 minutes"
+                    logger.warning(error_msg)
+                    self.error_occurred.emit(error_msg)
+                    return False
 
         except Exception as e:
             error_msg = f"Login failed: {str(e)}"
@@ -118,8 +142,11 @@ class WhatsAppService(QObject):
         return f"https://web.whatsapp.com/send?phone={cleaned_number}&type=phone_number&app_absent=0"
 
     def send_message(self, contact: Contact, message: Message, country_code: str = "") -> bool:
+        # Ensure we're logged in (will check persistent session first)
         if not self.is_logged_in:
+            self.status_update.emit("Checking login status...")
             if not self.login():
+                self.error_occurred.emit("Must be logged in to send messages")
                 return False
 
         try:
@@ -132,26 +159,50 @@ class WhatsAppService(QObject):
 
             wait = WebDriverWait(self.driver, DEFAULT_TIMEOUT)
 
-            message_box = wait.until(
-                EC.element_to_be_clickable((By.XPATH, MESSAGE_INPUT_XPATH))
-            )
+            # Try primary message input selector first, then fallback
+            try:
+                message_box = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, MESSAGE_INPUT_XPATH))
+                )
+            except TimeoutException:
+                self.status_update.emit("Trying fallback selector for message input...")
+                message_box = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, MESSAGE_INPUT_XPATH_FALLBACK))
+                )
 
             time.sleep(1)
 
+            # TODO: Implement attachment sending when ATTACHMENT_BUTTON_XPATH is found
             if message.has_attachments():
-                self._send_attachments(message.attachments)
-                time.sleep(1)
+                logger.warning("Attachment sending not yet implemented - need attachment button selector")
+                # self._send_attachments(message.attachments)
+                # time.sleep(1)
 
+            # Clear any existing text first
+            message_box.clear()
+
+            # Send message with proper line breaks
             lines = personalized_text.split('\n')
             for i, line in enumerate(lines):
                 message_box.send_keys(line)
                 if i < len(lines) - 1:
                     message_box.send_keys(Keys.SHIFT + Keys.ENTER)
 
-            send_button = wait.until(
-                EC.element_to_be_clickable((By.XPATH, SEND_BUTTON_XPATH))
-            )
-            send_button.click()
+            # Small delay to ensure message is typed
+            time.sleep(0.5)
+
+            # Try to find and click send button
+            try:
+                send_button = self.driver.find_element(By.XPATH, SEND_BUTTON_XPATH)
+                send_button.click()
+            except:
+                # Try media send button as fallback
+                try:
+                    send_button = self.driver.find_element(By.XPATH, MEDIA_SEND_BUTTON_XPATH)
+                    send_button.click()
+                except:
+                    # Last resort - press Enter
+                    message_box.send_keys(Keys.ENTER)
 
             self.message_sent.emit(contact.phone, True)
             self.status_update.emit(f"Message sent successfully to {contact.name}")
@@ -168,33 +219,44 @@ class WhatsAppService(QObject):
             return False
 
     def _send_attachments(self, attachments: List[str]):
-        try:
-            wait = WebDriverWait(self.driver, DEFAULT_TIMEOUT)
+        """
+        TODO: Implement when we have the correct selectors.
+        Need to find:
+        1. ATTACHMENT_BUTTON_XPATH - The paperclip/attachment button
+        2. File input element after clicking attachment
+        3. Send button for attachments
+        """
+        logger.warning("Attachment sending not implemented - waiting for correct selectors")
+        pass
 
-            attachment_button = wait.until(
-                EC.element_to_be_clickable((By.XPATH, ATTACHMENT_BUTTON_XPATH))
-            )
-            attachment_button.click()
-
-            time.sleep(1)
-
-            file_input = self.driver.find_element(By.CSS_SELECTOR, 'input[type="file"]')
-
-            for attachment_path in attachments:
-                if Path(attachment_path).exists():
-                    file_input.send_keys(str(Path(attachment_path).absolute()))
-                    time.sleep(1)
-
-            send_attachment_button = wait.until(
-                EC.element_to_be_clickable((By.XPATH, '//span[@data-icon="send"]'))
-            )
-            send_attachment_button.click()
-
-            time.sleep(2)
-
-        except Exception as e:
-            logger.error(f"Failed to send attachments: {str(e)}")
-            raise
+        # Original implementation for reference:
+        # try:
+        #     wait = WebDriverWait(self.driver, DEFAULT_TIMEOUT)
+        #
+        #     attachment_button = wait.until(
+        #         EC.element_to_be_clickable((By.XPATH, ATTACHMENT_BUTTON_XPATH))
+        #     )
+        #     attachment_button.click()
+        #
+        #     time.sleep(1)
+        #
+        #     file_input = self.driver.find_element(By.CSS_SELECTOR, 'input[type="file"]')
+        #
+        #     for attachment_path in attachments:
+        #         if Path(attachment_path).exists():
+        #             file_input.send_keys(str(Path(attachment_path).absolute()))
+        #             time.sleep(1)
+        #
+        #     send_attachment_button = wait.until(
+        #         EC.element_to_be_clickable((By.XPATH, MEDIA_SEND_BUTTON_XPATH))
+        #     )
+        #     send_attachment_button.click()
+        #
+        #     time.sleep(2)
+        #
+        # except Exception as e:
+        #     logger.error(f"Failed to send attachments: {str(e)}")
+        #     raise
 
     def send_bulk_messages(self, contacts: List[Contact], message: Message,
                           country_code: str = "", delay: int = 5):
