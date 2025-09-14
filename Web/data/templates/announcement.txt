@@ -1,0 +1,9 @@
+Dear %NAME%,
+
+We have an important announcement to share with you.
+
+Date: %DATE%
+
+Thank you for your attention.
+
+Best regards

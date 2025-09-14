@@ -1,0 +1,6 @@
+Hello %NAME%! 👋
+
+Hope you're having a great day! This is an automated message sent on %DATE%.
+
+Best regards,
+Your Team
