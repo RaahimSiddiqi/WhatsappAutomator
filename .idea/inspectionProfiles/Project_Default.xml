@@ -1,0 +1,30 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <value>
+          <list size="17">
+            <item index="0" class="java.lang.String" itemvalue="tokenizers" />
+            <item index="1" class="java.lang.String" itemvalue="transformers" />
+            <item index="2" class="java.lang.String" itemvalue="jiwer" />
+            <item index="3" class="java.lang.String" itemvalue="pydantic" />
+            <item index="4" class="java.lang.String" itemvalue="torch" />
+            <item index="5" class="java.lang.String" itemvalue="openai-whisper" />
+            <item index="6" class="java.lang.String" itemvalue="faster-whisper" />
+            <item index="7" class="java.lang.String" itemvalue="torchvision" />
+            <item index="8" class="java.lang.String" itemvalue="onnxruntime" />
+            <item index="9" class="java.lang.String" itemvalue="sounddevice" />
+            <item index="10" class="java.lang.String" itemvalue="soundfile" />
+            <item index="11" class="java.lang.String" itemvalue="accelerate" />
+            <item index="12" class="java.lang.String" itemvalue="torchaudio" />
+            <item index="13" class="java.lang.String" itemvalue="evaluate" />
+            <item index="14" class="java.lang.String" itemvalue="pyannote.audio" />
+            <item index="15" class="java.lang.String" itemvalue="whisper-live" />
+            <item index="16" class="java.lang.String" itemvalue="instructor" />
+          </list>
+        </value>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
