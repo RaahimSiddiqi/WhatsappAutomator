@@ -23,9 +23,11 @@ LOGIN_CHECK_XPATH = "//div[@class='x1c4vz4f xs83m0k xdl72j9 x1g77sc7 x78zum5 xoz
 
 # TODO: Need to find these selectors from current WhatsApp Web:
 # QR_CODE_XPATH = "// NEED SELECTOR FOR QR CODE CANVAS/IMAGE"
-# ATTACHMENT_BUTTON_XPATH = "// NEED SELECTOR FOR ATTACHMENT/PAPERCLIP BUTTON"
+ATTACHMENT_ADD_BUTTON_XPATH = "//div[@class='x100vrsf x1vqgdyp x78zum5 x6s0dn4 xpvyfi4']"
+# ATTACHMENT_CONFIRM_BUTTON_XPATH = "//div[@class='x1hx0egp x6ikm8r x1odjw0f x1k6rcq7 x1lkfr7t']//p[@class='selectable-text copyable-text x15bjb6t x1n2onr6']"
 # CHAT_SEARCH_XPATH = "// NEED SELECTOR FOR SEARCH/FILTER CHATS INPUT"
-# NEW_CHAT_BUTTON_XPATH = "// NEED SELECTOR FOR NEW CHAT BUTTON"
+NEW_CHAT_BUTTON_XPATH = "//div[@class='_ajv7 x1n2onr6 x1okw0bk x5yr21d x1c9tyrk xeusxvb x1pahc9y x1ertn4p xlkovuz x16j0l1c x1hm9lzh xyklrzc x1z0qo99']"
+
 
 # Media input for captions
 MEDIA_CAPTION_INPUT_XPATH = "//div[@class='x1hx0egp x6ikm8r x1odjw0f x1k6rcq7 x1lkfr7t']//p"

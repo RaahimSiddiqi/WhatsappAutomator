@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSlot
 from pathlib import Path
 from models.contact import Contact
-from models.message import Message
+from models.message import Message, Attachment, MediaType
 from services.whatsapp_service import WhatsAppService
 from utils.file_handler import FileHandler
 
@@ -208,7 +208,7 @@ class SingleMessageTab(QWidget):
             "Image Files (*.jpg *.jpeg *.png *.gif *.webp)"
         )
         if file_path:
-            self.attachments.append(file_path)
+            self.attachments.append(Attachment(file_path, MediaType.Image))
             self.attachments_list.addItem(Path(file_path).name)
 
     @pyqtSlot()
@@ -220,7 +220,7 @@ class SingleMessageTab(QWidget):
             "Documents (*.pdf *.doc *.docx *.xls *.xlsx *.ppt *.pptx *.txt)"
         )
         if file_path:
-            self.attachments.append(file_path)
+            self.attachments.append(Attachment(file_path, MediaType.Document))
             self.attachments_list.addItem(Path(file_path).name)
 
     @pyqtSlot()
@@ -232,7 +232,7 @@ class SingleMessageTab(QWidget):
             "Video Files (*.mp4 *.avi *.mov *.wmv *.flv)"
         )
         if file_path:
-            self.attachments.append(file_path)
+            self.attachments.append(Attachment(file_path, MediaType.Video))
             self.attachments_list.addItem(Path(file_path).name)
 
     @pyqtSlot()

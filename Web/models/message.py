@@ -2,12 +2,24 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 from datetime import datetime
 from config import PLACEHOLDER_NAME, PLACEHOLDER_PHONE, PLACEHOLDER_DATE
+from enum import Enum
 
+
+class MediaType(Enum):
+    Video = 0
+    Image = 1
+    Document = 2
+
+
+@dataclass
+class Attachment:
+    file_path: str
+    media_type: MediaType
 
 @dataclass
 class Message:
     text: str
-    attachments: List[str] = field(default_factory=list)
+    attachments: List[Attachment] = field(default_factory=list)
     scheduled_time: Optional[datetime] = None
     template_name: str = ""
 
@@ -28,9 +40,10 @@ class Message:
 
         return personalized
 
-    def add_attachment(self, file_path: str):
+    def add_attachment(self, media_type, file_path: str):
         if file_path not in self.attachments:
-            self.attachments.append(file_path)
+            attachment = Attachment(file_path = file_path, media_type = media_type)
+            self.attachments.append(attachment)
 
     def remove_attachment(self, file_path: str):
         if file_path in self.attachments:
@@ -53,7 +66,7 @@ class Message:
     def to_dict(self) -> dict:
         return {
             'text': self.text,
-            'attachments': self.attachments,
+            'attachments': [attachment.file_path for attachment in self.attachments],
             'scheduled_time': self.scheduled_time.isoformat() if self.scheduled_time else None,
             'template_name': self.template_name
         }

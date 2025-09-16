@@ -12,7 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from webdriver_manager.chrome import ChromeDriverManager
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
-from models.message import Message
+from models.message import Message, Attachment, MediaType
 from models.contact import Contact
 from config import (
     WHATSAPP_WEB_URL,
@@ -22,7 +22,7 @@ from config import (
     MEDIA_SEND_BUTTON_XPATH,
     LOGIN_CHECK_XPATH,
     MEDIA_CAPTION_INPUT_XPATH,
-    DEFAULT_TIMEOUT
+    DEFAULT_TIMEOUT, ATTACHMENT_ADD_BUTTON_XPATH
 )
 
 logger = logging.getLogger(__name__)
@@ -174,9 +174,8 @@ class WhatsAppService(QObject):
 
             # TODO: Implement attachment sending when ATTACHMENT_BUTTON_XPATH is found
             if message.has_attachments():
-                logger.warning("Attachment sending not yet implemented - need attachment button selector")
-                # self._send_attachments(message.attachments)
-                # time.sleep(1)
+                self._send_attachments(message.attachments)
+                time.sleep(1)
 
             # Clear any existing text first
             message_box.clear()
@@ -218,45 +217,45 @@ class WhatsAppService(QObject):
             self.error_occurred.emit(error_msg)
             return False
 
-    def _send_attachments(self, attachments: List[str]):
+    def _send_attachments(self, attachments: List[Attachment]):
         """
-        TODO: Implement when we have the correct selectors.
         Need to find:
         1. ATTACHMENT_BUTTON_XPATH - The paperclip/attachment button
         2. File input element after clicking attachment
         3. Send button for attachments
         """
-        logger.warning("Attachment sending not implemented - waiting for correct selectors")
-        pass
 
-        # Original implementation for reference:
-        # try:
-        #     wait = WebDriverWait(self.driver, DEFAULT_TIMEOUT)
-        #
-        #     attachment_button = wait.until(
-        #         EC.element_to_be_clickable((By.XPATH, ATTACHMENT_BUTTON_XPATH))
-        #     )
-        #     attachment_button.click()
-        #
-        #     time.sleep(1)
-        #
-        #     file_input = self.driver.find_element(By.CSS_SELECTOR, 'input[type="file"]')
-        #
-        #     for attachment_path in attachments:
-        #         if Path(attachment_path).exists():
-        #             file_input.send_keys(str(Path(attachment_path).absolute()))
-        #             time.sleep(1)
-        #
-        #     send_attachment_button = wait.until(
-        #         EC.element_to_be_clickable((By.XPATH, MEDIA_SEND_BUTTON_XPATH))
-        #     )
-        #     send_attachment_button.click()
-        #
-        #     time.sleep(2)
-        #
-        # except Exception as e:
-        #     logger.error(f"Failed to send attachments: {str(e)}")
-        #     raise
+        try:
+            wait = WebDriverWait(self.driver, DEFAULT_TIMEOUT)
+
+            attachment_button = wait.until(
+                EC.element_to_be_clickable((By.XPATH, ATTACHMENT_ADD_BUTTON_XPATH))
+            )
+
+            for attachment in attachments:
+                attachment_button.click()
+                time.sleep(1)
+
+                if Path(attachment.file_path).exists():
+                    if attachment.media_type == MediaType.Document:
+                        file_input = self.driver.find_element(By.CSS_SELECTOR, 'input[type="file"]')
+                    elif attachment.media_type == MediaType.Image or attachment.media_type == MediaType.Video:
+                        file_input = self.driver.find_element(By.XPATH, "//input[@type='file'][contains( @ accept, 'image/*')]")
+                    else:
+                        continue
+                    file_input.send_keys(str(Path(attachment.file_path).absolute()))
+                    time.sleep(1)
+
+                send_attachment_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, MEDIA_SEND_BUTTON_XPATH))
+                )
+                send_attachment_button.click()
+                time.sleep(1)
+
+        except Exception as e:
+            logger.error(f"Failed to send attachments: {str(e)}")
+            raise
+
 
     def send_bulk_messages(self, contacts: List[Contact], message: Message,
                           country_code: str = "", delay: int = 5):
