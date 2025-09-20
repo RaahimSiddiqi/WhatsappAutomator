@@ -2,6 +2,8 @@
 
 A professional desktop application for automating WhatsApp Web messaging built with PyQt6 and Selenium.
 
+![WhatsApp Automator](data/assests/mainwindow.png)
+
 ## Features
 
 - **Single Message Sending**: Send personalized messages to individual contacts
@@ -50,6 +52,8 @@ python app.py
 6. Click "Send Message"
 
 ### Bulk Messaging
+
+![Bulk Messaging Interface](data/assests/bulkmessaging.png)
 
 1. Go to the "Bulk Messages" tab
 2. Import contacts from CSV or Excel file
