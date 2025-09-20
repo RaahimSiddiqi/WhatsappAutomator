@@ -56,8 +56,12 @@ class SettingsTab(QWidget):
         browser_group = QGroupBox("Browser Settings")
         browser_layout = QVBoxLayout()
 
-        self.headless_checkbox = QCheckBox("Run browser in headless mode")
-        self.headless_checkbox.setToolTip("Run browser without GUI (not recommended for WhatsApp)")
+        self.headless_checkbox = QCheckBox("Run browser in headless mode (after login)")
+        self.headless_checkbox.setToolTip(
+            "After initial login, run WhatsApp in the background without browser window.\n"
+            "First login always requires GUI for QR code scanning.\n"
+            "Enable this for server/background automation."
+        )
         browser_layout.addWidget(self.headless_checkbox)
 
         self.persist_session_checkbox = QCheckBox("Persist login session")

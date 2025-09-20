@@ -569,6 +569,13 @@ class BulkMessageTab(QWidget):
         country_code = self.country_code
         delay = self.delay_seconds
 
+        # Update headless setting before starting bulk send
+        from PyQt6.QtCore import QSettings
+        settings = QSettings("WhatsAppAutomator", "Settings")
+        headless_enabled = settings.value("headless_mode", False) == "true"
+        print(f"DEBUG: Bulk message - headless setting = {settings.value('headless_mode', False)}, enabled = {headless_enabled}")
+        self.whatsapp_service.headless_enabled = headless_enabled
+
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.progress_bar.setVisible(True)

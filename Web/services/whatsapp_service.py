@@ -43,10 +43,18 @@ class WhatsAppService(QObject):
         self.profile_dir = Path.home() / ".whatsapp_automator" / "chrome_profile"
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         self._stop_requested = False
+        self.headless_enabled = False  # Set from settings
+        self.current_headless_mode = None  # Track current driver mode
 
-    def initialize_driver(self) -> bool:
+    def initialize_driver(self, use_headless: bool = False) -> bool:
+        """Initialize Chrome driver with optional headless mode.
+
+        Args:
+            use_headless: Whether to run in headless mode
+        """
         try:
-            self.status_update.emit("Initializing Chrome driver...")
+            mode = "headless" if use_headless else "GUI"
+            self.status_update.emit(f"Initializing Chrome driver in {mode} mode...")
 
             options = Options()
             options.add_argument(f"--user-data-dir={self.profile_dir}")
@@ -57,6 +65,12 @@ class WhatsAppService(QObject):
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
 
+            # Add headless arguments if requested
+            if use_headless:
+                options.add_argument("--headless=new")  # Chrome 109+ new headless mode
+                options.add_argument("--window-size=1920,1080")
+                options.add_argument("--disable-gpu")
+
             service = ChromeService(ChromeDriverManager().install())
 
             self.driver = webdriver.Chrome(
@@ -66,7 +80,9 @@ class WhatsAppService(QObject):
 
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
-            self.status_update.emit("Chrome driver initialized successfully")
+            # Track the current mode
+            self.current_headless_mode = use_headless
+            self.status_update.emit(f"Chrome driver initialized successfully in {mode} mode")
             return True
 
         except Exception as e:
@@ -75,14 +91,35 @@ class WhatsAppService(QObject):
             self.error_occurred.emit(error_msg)
             return False
 
+    def check_session_exists(self) -> bool:
+        """Quick check if a WhatsApp session exists without full login."""
+        if not self.driver:
+            # Initialize in headless to quickly check
+            if not self.initialize_driver(use_headless=True):
+                return False
+
+        try:
+            self.driver.get(WHATSAPP_WEB_URL)
+            wait = WebDriverWait(self.driver, 5)  # Short wait
+            wait.until(EC.presence_of_element_located((By.XPATH, LOGIN_CHECK_XPATH)))
+            return True
+        except:
+            return False
+        finally:
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
+
     def login(self) -> bool:
+        """Login to WhatsApp Web."""
         # Check if already logged in
         if self.is_logged_in:
             self.status_update.emit("Already logged in to WhatsApp Web")
             return True
 
         if not self.driver:
-            if not self.initialize_driver():
+            # Always use GUI mode for login
+            if not self.initialize_driver(use_headless=False):
                 return False
 
         try:
@@ -141,13 +178,103 @@ class WhatsAppService(QObject):
 
         return f"https://web.whatsapp.com/send?phone={cleaned_number}&type=phone_number&app_absent=0"
 
-    def send_message(self, contact: Contact, message: Message, country_code: str = "") -> bool:
-        # Ensure we're logged in (will check persistent session first)
-        if not self.is_logged_in:
-            self.status_update.emit("Checking login status...")
-            if not self.login():
-                self.error_occurred.emit("Must be logged in to send messages")
+    def restart_in_headless(self) -> bool:
+        """Restart the driver in headless mode after login."""
+        try:
+            # Close current driver
+            if self.driver:
+                self.driver.quit()
+                self.driver = None
+
+            # Restart in headless mode
+            if not self.initialize_driver(use_headless=True):
                 return False
+
+            # Verify we're still logged in
+            self.driver.get(WHATSAPP_WEB_URL)
+            wait = WebDriverWait(self.driver, 10)
+            wait.until(EC.presence_of_element_located((By.XPATH, LOGIN_CHECK_XPATH)))
+
+            self.is_logged_in = True
+            self.status_update.emit("Successfully switched to headless mode")
+            return True
+
+        except TimeoutException:
+            self.error_occurred.emit("Session not found in headless mode. Please disable headless mode or try logging in again.")
+            return False
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to restart in headless: {str(e)}")
+            return False
+
+    def prepare_for_messaging(self) -> bool:
+        """Prepare the driver for messaging, handling headless mode if enabled."""
+        # If headless is enabled and we have a session, use headless
+        if self.headless_enabled:
+            # Check if session exists
+            if self.check_session_exists():
+                # Session exists, start in headless
+                if not self.initialize_driver(use_headless=True):
+                    return False
+                self.driver.get(WHATSAPP_WEB_URL)
+                self.is_logged_in = True
+                self.status_update.emit("Running in headless mode with existing session")
+                return True
+            else:
+                # No session, need GUI login first
+                return False  # Caller should handle login flow
+        else:
+            # Normal GUI mode
+            if not self.login():
+                return False
+            return True
+
+    def send_message(self, contact: Contact, message: Message, country_code: str = "") -> bool:
+        # Debug output
+        logger.info(f"send_message called - headless_enabled: {self.headless_enabled}, is_logged_in: {self.is_logged_in}, current_headless_mode: {self.current_headless_mode}")
+
+        # Check if we need to restart the driver due to headless mode change
+        if self.is_logged_in and self.driver and (self.current_headless_mode != self.headless_enabled):
+            logger.info(f"Headless mode changed from {self.current_headless_mode} to {self.headless_enabled}, restarting driver...")
+            self.status_update.emit(f"Switching to {'headless' if self.headless_enabled else 'GUI'} mode...")
+
+            # Close current driver
+            self.driver.quit()
+            self.driver = None
+            self.is_logged_in = False  # Need to re-verify login
+
+        # Ensure we're logged in - handle headless mode properly
+        if not self.is_logged_in:
+            if self.headless_enabled:
+                # Headless mode - try to start with existing session
+                self.status_update.emit("Starting in headless mode...")
+                logger.info("Attempting to start in headless mode")
+
+                if not self.initialize_driver(use_headless=True):
+                    self.error_occurred.emit("Failed to start headless browser")
+                    return False
+
+                try:
+                    self.driver.get(WHATSAPP_WEB_URL)
+                    wait = WebDriverWait(self.driver, 10)
+                    wait.until(EC.presence_of_element_located((By.XPATH, LOGIN_CHECK_XPATH)))
+                    self.is_logged_in = True
+                    self.status_update.emit("✅ Running in headless mode")
+                    logger.info("Successfully started in headless mode with existing session")
+                except TimeoutException:
+                    logger.warning("No valid session found for headless mode")
+                    self.error_occurred.emit("No valid session found for headless mode. Please login first.")
+                    return False
+                except Exception as e:
+                    logger.error(f"Failed to verify headless session: {e}")
+                    self.error_occurred.emit(f"Failed to verify headless session: {str(e)}")
+                    return False
+            else:
+                # Regular GUI mode
+                self.status_update.emit("Checking login status...")
+                logger.info("Using regular GUI mode")
+                if not self.login():
+                    self.error_occurred.emit("Must be logged in to send messages")
+                    return False
 
         try:
             personalized_text = message.get_personalized_text(contact.name)

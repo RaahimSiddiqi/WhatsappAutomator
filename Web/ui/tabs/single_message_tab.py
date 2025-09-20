@@ -271,6 +271,13 @@ class SingleMessageTab(QWidget):
         self.send_btn.setEnabled(False)
         self.send_btn.setText("Sending...")
 
+        # Update headless setting before sending
+        from PyQt6.QtCore import QSettings
+        settings = QSettings("WhatsAppAutomator", "Settings")
+        headless_enabled = settings.value("headless_mode", False) == "true"
+        print(f"DEBUG: Single message - headless setting = {settings.value('headless_mode', False)}, enabled = {headless_enabled}")
+        self.whatsapp_service.headless_enabled = headless_enabled
+
         success = self.whatsapp_service.send_message(contact, message, country_code)
 
         self.send_btn.setEnabled(True)

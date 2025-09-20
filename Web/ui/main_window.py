@@ -2,9 +2,9 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QPushButton, QLabel, QFileDialog,
     QMessageBox, QStatusBar, QToolBar, QSplitter, QMenu,
-    QApplication
+    QApplication, QDialog, QDialogButtonBox
 )
-from PyQt6.QtCore import Qt, QSize, pyqtSlot
+from PyQt6.QtCore import Qt, QSize, pyqtSlot, QSettings
 from PyQt6.QtGui import QAction, QIcon
 from pathlib import Path
 import logging
@@ -23,6 +23,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.whatsapp_service = WhatsAppService(self)
         self.full_status_text = ""  # Store full text for copying
+        self.settings = QSettings("WhatsAppAutomator", "Settings")
         self.setup_ui()
         self.setup_connections()
         self.load_settings()
@@ -184,8 +185,17 @@ class MainWindow(QMainWindow):
 
     @pyqtSlot()
     def login_whatsapp(self):
-        self.status_label.setText("Logging in to WhatsApp...")
-        self.whatsapp_service.login()
+        # Get headless setting
+        headless_enabled = self.settings.value("headless_mode", False) == "true"
+        self.whatsapp_service.headless_enabled = headless_enabled
+
+        if headless_enabled:
+            # Use the headless login flow
+            self.initiate_headless_login()
+        else:
+            # Normal login
+            self.status_label.setText("Logging in to WhatsApp...")
+            self.whatsapp_service.login()
 
     @pyqtSlot()
     def logout_whatsapp(self):
@@ -211,6 +221,94 @@ class MainWindow(QMainWindow):
     def send_bulk_messages(self):
         self.tab_widget.setCurrentWidget(self.bulk_message_tab)
         self.bulk_message_tab.start_bulk_send()
+
+    def check_headless_login_needed(self) -> bool:
+        """Check if headless mode is enabled and login is needed.
+
+        Returns:
+            True if login flow was initiated (stop current action), False otherwise
+        """
+        # Get headless setting
+        headless_enabled = self.settings.value("headless_mode", False) == "true"
+        print(f"DEBUG: headless setting = {self.settings.value('headless_mode', False)}, enabled = {headless_enabled}")
+        self.whatsapp_service.headless_enabled = headless_enabled
+
+        if headless_enabled and not self.whatsapp_service.is_logged_in:
+            # Check if session exists
+            self.status_label.setText("Checking for existing WhatsApp session...")
+            QApplication.processEvents()
+
+            if not self.whatsapp_service.check_session_exists():
+                # Show login required dialog
+                reply = QMessageBox.information(
+                    self,
+                    "Login Required for Headless Mode",
+                    "Headless mode is enabled but you need to login first.\n\n"
+                    "The browser will open for you to scan the QR code. "
+                    "After login, it will switch to headless mode automatically.\n\n"
+                    "Would you like to login now?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes
+                )
+
+                if reply == QMessageBox.StandardButton.Yes:
+                    self.initiate_headless_login()
+                else:
+                    self.status_label.setText("Login cancelled. Disable headless mode in Settings to use GUI mode.")
+                return True  # Stop current action
+
+        return False  # Continue with normal flow
+
+    def initiate_headless_login(self):
+        """Handle the login flow for headless mode."""
+        try:
+            # Login with GUI
+            self.status_label.setText("Opening browser for login...")
+            QApplication.processEvents()
+
+            if not self.whatsapp_service.login():
+                QMessageBox.critical(
+                    self,
+                    "Login Failed",
+                    "Failed to login to WhatsApp. Please try again."
+                )
+                return
+
+            # Success dialog
+            reply = QMessageBox.information(
+                self,
+                "Login Successful",
+                "Login successful! Click OK to switch to headless mode.",
+                QMessageBox.StandardButton.Ok
+            )
+
+            # Restart in headless
+            self.status_label.setText("Switching to headless mode...")
+            QApplication.processEvents()
+
+            if self.whatsapp_service.restart_in_headless():
+                self.status_label.setText("Ready - Running in headless mode")
+                QMessageBox.information(
+                    self,
+                    "Headless Mode Active",
+                    "Successfully switched to headless mode. You can now send messages without the browser window."
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Headless Mode Failed",
+                    "Could not switch to headless mode. The session may have expired. "
+                    "Please disable headless mode in Settings or try logging in again."
+                )
+                self.whatsapp_service.close()
+
+        except Exception as e:
+            logger.error(f"Headless login error: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"An error occurred during login: {str(e)}"
+            )
 
     @pyqtSlot()
     def stop_sending(self):
