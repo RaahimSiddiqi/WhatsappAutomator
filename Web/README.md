@@ -2,7 +2,7 @@
 
 A professional desktop application for automating WhatsApp Web messaging built with PyQt6 and Selenium.
 
-![WhatsApp Automator](data/assests/mainwindow.png)
+![WhatsApp Automator](Web/data/assests/mainwindow.png)
 
 ## Features
 
@@ -53,7 +53,7 @@ python app.py
 
 ### Bulk Messaging
 
-![Bulk Messaging Interface](data/assests/bulkmessaging.png)
+![Bulk Messaging Interface](Web/data/assests/bulkmessaging.png)
 
 1. Go to the "Bulk Messages" tab
 2. Import contacts from CSV or Excel file
