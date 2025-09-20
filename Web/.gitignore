@@ -1,2 +1,4 @@
 .claude/
 .idea/
+__pycache__
+deploy
